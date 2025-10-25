@@ -16,6 +16,7 @@ import json
 import io
 import csv
 import copy
+import numpy as np
 
 import requests
 import streamlit as st  # <-- import streamlit here and set page config immediately
@@ -244,7 +245,7 @@ def fetch_weather_data():
     """
     Lightweight OpenWeatherMap forecast fetch (metric units).
     Returns parsed JSON or None.
-    """
+    
     weather_url = f"https://api.openweathermap.org/data/2.5/forecast?zip={zip_code},{country_code}&appid={api_key}&units=metric"
     try:
         response = requests.get(weather_url, timeout=8)
@@ -256,6 +257,18 @@ def fetch_weather_data():
     else:
         logger.error("Weather API Error: %s", response.status_code)
         return None
+    """
+    return {
+        "city": {"name": "Manila"},
+        "list": [{
+            "main": {
+                "temp": random.uniform(25, 35),  
+            },
+            "weather": [{
+                "description": random.choice(["clear sky", "few clouds", "scattered clouds", "broken clouds", "shower rain", "rain", "thunderstorm", "snow", "mist"])
+            }]
+        }]
+    }
 
 
 def fetch_precipitation():
@@ -263,7 +276,7 @@ def fetch_precipitation():
     Heavy: loops 30 days and fetches historic precipitation from weatherapi.com.
     DON'T call this frequently — background fetcher refreshes it slowly by default.
     Returns total precipitation (mm) for the last 30 days or None on repeated failures.
-    """
+    
     total_precipitation = 0.0
     did_any = False
     for day in range(30):
@@ -287,12 +300,14 @@ def fetch_precipitation():
     if not did_any:
         return None
     return total_precipitation
+    """
+    return random.uniform(0, 200)
 
 
 def fetch_air_quality():
     """
     OpenWeatherMap air pollution endpoint.
-    """
+    
     air_quality_url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}"
     try:
         response = requests.get(air_quality_url, timeout=8)
@@ -304,7 +319,24 @@ def fetch_air_quality():
     else:
         logger.error("Air Quality API Error: %s", response.status_code)
         return None
-
+    """
+    return {
+        "list": [{
+            "main": {
+                "aqi": random.randint(1, 5)  # Random AQI value between 1 (Good) and 5 (Very Poor)
+            },
+            "components": {
+                "co": random.uniform(0, 10),
+                "no": random.uniform(0, 10),
+                "no2": random.uniform(0, 10),
+                "o3": random.uniform(0, 10),
+                "so2": random.uniform(0, 10),
+                "pm2_5": random.uniform(0, 10),
+                "pm10": random.uniform(0, 10),
+                "nh3": random.uniform(0, 10)
+            }
+        }]
+    }
 
 # ---------------------------
 # Random metric generators (burstier / more visible randomness)
@@ -314,10 +346,13 @@ def _time_phase(period_seconds=300.0):
     return math.sin(time.time() / max(1.0, period_seconds) * 2 * math.pi)
 
 
-def generate_container_metrics():
+def generate_container_metrics(company_type):
     phase = _time_phase(period_seconds=600.0)  # slow ~10m wave
 
-    base_cpu = 30.0 + 18.0 * phase + random.gauss(0, 4.0)
+    if company_type == "Large-tier Company":
+        base_cpu = 50.0 + 25.0 * phase + random.gauss(0, 4.0)
+    else:  # mid tier company
+        base_cpu = 30.0 + 18.0 * phase + random.gauss(0, 4.0)
 
     # occasional burst (spike) with small probability
     burst = random.random() < 0.08  # 8% chance
@@ -327,9 +362,12 @@ def generate_container_metrics():
         burst_boost = 0.0
 
     cpu_val = max(0.0, min(100.0, base_cpu + burst_boost + random.gauss(0, 3.0)))
-
-    # GPU slightly correlated but independent spiking occasionally
-    base_gpu = 8.0 + 12.0 * _time_phase(period_seconds=400.0) + random.gauss(0, 3.0)
+    # gpu usage (somewhat correlated with cpu, but different pattern)
+    if company_type == "Large-size Company":
+        base_gpu = 12.0 + 15.0 * _time_phase(period_seconds=400.0) + random.gauss(0, 3.0)
+    else:  # mid tier company
+        base_gpu = 8.0 + 12.0 * _time_phase(period_seconds=400.0) + random.gauss(0, 3.0)
+    
     gpu_val = max(0.0, min(100.0, base_gpu + (burst_boost * 0.6) + random.gauss(0, 5.0)))
 
     # sensor temp (correlates weakly with cpu, plus noise)
@@ -351,14 +389,14 @@ def generate_container_metrics():
         "cpu_util_pct": round(cpu_val, 2),
         "gpu_util_pct": round(gpu_val, 2),
         "cpu_seconds": round(random.uniform(0.0, 10000.0), 2),
-        "memory_rss_bytes": random.randint(0, 8 * 1024**2),
-        "memory_limit_bytes": random.randint(8 * 1024**2, 16 * 1024**2),
-        "disk_read_bytes": random.randint(0, 1024**3),
-        "disk_write_bytes": random.randint(0, 1024**3),
-        "io_ops": random.randint(0, 100),
+        "memory_rss_bytes": random.randint(0, 16 * 1024**2) if company_type == "Large-size Company" else random.randint(0, 8 * 1024**2),
+        "memory_limit_bytes": random.randint(16 * 1024**2, 32 * 1024**2) if company_type == "Large-size Company" else random.randint(8 * 1024**2, 16 * 1024**2),
+        "disk_read_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "disk_write_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "io_ops": random.randint(0, 200) if company_type == "Large-size Company" else random.randint(0, 100),
         "network_rx_bytes": abs(int(network_rx)),
-        "network_tx_bytes": random.randint(0, 1024**3),
-        "process_count": random.randint(1, 50),
+        "network_tx_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "process_count": random.randint(1, 100) if company_type == "Large-size Company" else random.randint(1, 50),
         # restart_count more likely to increase slightly during bursts
         "restart_count": random.randint(0, 2) + (1 if burst and random.random() < 0.05 else 0),
         "uptime_seconds": random.randint(0, 86400),
@@ -369,9 +407,14 @@ def generate_container_metrics():
     }
 
 
-def generate_vm_metrics():
+def generate_vm_metrics(company_type):
     phase = _time_phase(period_seconds=900.0)
-    base_vm_cpu = 25.0 + 20.0 * phase + random.gauss(0, 5.0)
+
+    if company_type == "Large-size Company":
+        base_vm_cpu = 40.0 + 25.0 * phase + random.gauss(0, 5.0)
+    else:  # mid tier company
+        base_vm_cpu = 25.0 + 20.0 * phase + random.gauss(0, 5.0)
+
     burst = random.random() < 0.06
     vm_cpu = max(
         0.0,
@@ -384,13 +427,13 @@ def generate_vm_metrics():
         "vm_cpu_pct": round(vm_cpu, 2),
         "cpu_seconds": round(random.uniform(0.0, 10000.0), 2),
         "vm_cpu_steal_pct": round(random.uniform(0.0, 5.0 if not burst else 20.0), 2),
-        "memory_rss_bytes": random.randint(0, 8 * 1024**2),
-        "memory_limit_bytes": random.randint(8 * 1024**2, 16 * 1024**2),
+        "memory_rss_bytes": random.randint(0, 16 * 1024**2) if company_type == "Large-size Company" else random.randint(0, 8 * 1024**2),
+        "memory_limit_bytes": random.randint(16 * 1024**2, 32 * 1024**2) if company_type == "Large-size Company" else random.randint(8 * 1024**2, 16 * 1024**2),
         "disk_iops": random.randint(0, 200 if burst else 100),
-        "disk_read_bytes": random.randint(0, 1024**3),
-        "disk_write_bytes": random.randint(0, 1024**3),
-        "network_rx_bytes": random.randint(0, 1024**3),
-        "network_tx_bytes": random.randint(0, 1024**3),
+        "disk_read_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "disk_write_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "network_rx_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "network_tx_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
         "host_power_estimate_w": round(host_power, 2),
         "hypervisor_overhead_pct": round(random.uniform(0.0, 100.0), 2),
         "uptime_seconds": random.randint(0, 86400),
@@ -398,10 +441,15 @@ def generate_vm_metrics():
     }
 
 
-def generate_app_metrics():
+def generate_app_metrics(company_type):
     # app metrics intentionally heavy-tail and bursty
     phase = _time_phase(period_seconds=400.0)
-    base_rps = max(1.0, 60.0 + 40.0 * phase + random.gauss(0, 20.0))
+
+    if company_type == "Large-size Company":
+        base_rps = max(1.0, 100.0 + 60.0 * phase + random.gauss(0, 30.0))
+    else:  # mid tier company
+        base_rps = max(1.0, 60.0 + 40.0 * phase + random.gauss(0, 20.0))
+
     burst = random.random() < 0.07
     request_rate = base_rps * (random.uniform(1.0, 1.6) if not burst else random.uniform(2.5, 8.0))
 
@@ -425,7 +473,7 @@ def generate_app_metrics():
         "latency_p50_ms": round(max(1.0, p95 * random.uniform(0.2, 0.6)), 2),
         "latency_p99_ms": round(p99, 2),
         "error_rate_pct": round(error_rate, 2),
-        "db_connection_count": random.randint(0, 200),
+        "db_connection_count": random.randint(0, 300 if company_type == "Large-size Company" else 200),
         "cache_hit_ratio": round(random.uniform(50.0, 99.0) if not burst else random.uniform(20.0, 90.0), 2),
         "queue_length": random.randint(0, 300 if burst else 100),
         "cpu_util_pct": round(
@@ -433,13 +481,13 @@ def generate_app_metrics():
             2,
         ),
         "cpu_seconds": round(random.uniform(0.0, 10000.0), 2),
-        "memory_rss_bytes": random.randint(0, 8 * 1024**2),
-        "disk_read_bytes": random.randint(0, 1024**3),
-        "disk_write_bytes": random.randint(0, 1024**3),
-        "network_rx_bytes": random.randint(0, 1024**3),
-        "network_tx_bytes": random.randint(0, 1024**3),
-        "process_count": random.randint(1, 50),
-        # restart_count occasional small increases
+        "memory_rss_bytes": random.randint(0, 16 * 1024**2) if company_type == "Large-size Company" else random.randint(0, 8 * 1024**2),
+        "disk_read_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "disk_write_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "network_rx_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "network_tx_bytes": random.randint(0, 1024**4) if company_type == "Large-size Company" else random.randint(0, 1024**3),
+        "process_count": random.randint(1, 100) if company_type == "Large-size Company" else random.randint(1, 50),
+        # restart count occasional small increases
         "restart_count": random.randint(0, 1) + (1 if burst and random.random() < 0.03 else 0),
         "sensor_temp_c": round(24.0 + (random.gauss(0, 2.0) + (2.0 if burst else 0.0)), 2),
         "sensor_humidity_pct": round(random.uniform(0.0, 100.0), 2),
@@ -447,43 +495,67 @@ def generate_app_metrics():
     }
 
 
-def generate_orchestrator_metrics():
+def generate_orchestrator_metrics(company_type):
     burst = random.random() < 0.05
-    return {
-        "timestamp": now_manila().isoformat(),
-        "node_count": random.randint(1, 20),
-        "pod_count": random.randint(1, 200) + (20 if burst else 0),
-        "pod_status_pending": random.randint(0, 20),
-        "pod_status_running": random.randint(1, 200),
-        "pod_status_failed": random.randint(0, 20) + (random.randint(0, 10) if burst else 0),
-        "scheduler_evictions": random.randint(0, 50),
-        "cluster_api_latency_ms": round(random.uniform(0.0, 300.0 if not burst else 1200.0), 2),
-        "cluster_autoscaler_actions": random.randint(0, 50),
-        "aggregated_cpu_util_pct": round(random.uniform(0.0, 100.0), 2),
-        "aggregated_memory_rss_bytes": random.randint(0, 8 * 1024**2),
-        "aggregated_network_bytes": random.randint(0, 1024**3),
-        "restart_count": random.randint(0, 3) + (1 if burst and random.random() < 0.05 else 0),
-        "uptime_seconds": random.randint(0, 86400),
-        "burst": burst,
-    }
+    if company_type == "Large-size Company":
+        return {
+            "timestamp": now_manila().isoformat(),
+            "node_count": random.randint(5, 50),  
+            "pod_count": random.randint(20, 500) + (20 if burst else 0),  
+            "pod_status_pending": random.randint(0, 50),
+            "pod_status_running": random.randint(10, 300),  
+            "pod_status_failed": random.randint(0, 50) + (random.randint(0, 20) if burst else 0),
+            "scheduler_evictions": random.randint(0, 100),
+            "cluster_api_latency_ms": round(random.uniform(0.0, 600.0 if not burst else 2000.0), 2),
+            "cluster_autoscaler_actions": random.randint(0, 100),
+            "aggregated_cpu_util_pct": round(random.uniform(0.0, 100.0), 2),
+            "aggregated_memory_rss_bytes": random.randint(0, 16 * 1024**2),  
+            "aggregated_network_bytes": random.randint(0, 2 * 1024**3),  
+            "restart_count": random.randint(0, 5) + (1 if burst and random.random() < 0.05 else 0),
+            "uptime_seconds": random.randint(0, 86400),
+            "burst": burst,
+        }
+    else:  # mid tier company
+        return {
+            "timestamp": now_manila().isoformat(),
+            "node_count": random.randint(1, 20),
+            "pod_count": random.randint(1, 200) + (20 if burst else 0),
+            "pod_status_pending": random.randint(0, 20),
+            "pod_status_running": random.randint(1, 200),
+            "pod_status_failed": random.randint(0, 20) + (random.randint(0, 10) if burst else 0),
+            "scheduler_evictions": random.randint(0, 50),
+            "cluster_api_latency_ms": round(random.uniform(0.0, 300.0 if not burst else 1200.0), 2),
+            "cluster_autoscaler_actions": random.randint(0, 50),
+            "aggregated_cpu_util_pct": round(random.uniform(0.0, 100.0), 2),
+            "aggregated_memory_rss_bytes": random.randint(0, 8 * 1024**2),
+            "aggregated_network_bytes": random.randint(0, 1024**3),
+            "restart_count": random.randint(0, 3) + (1 if burst and random.random() < 0.05 else 0),
+            "uptime_seconds": random.randint(0, 86400),
+            "burst": burst,
+        }
 
 
-def generate_network_metrics():
+def generate_network_metrics(company_type):
     burst = random.random() < 0.06
     base_phase = _time_phase(period_seconds=500.0)
-    interface_throughput = int(
-        max(0, (100000 * (0.2 + 0.7 * abs(base_phase))) + random.gauss(0, 15000) + (150000 if burst else 0))
-    )
+    if company_type == "Large-size Company":
+        interface_throughput = int(
+            max(0, (200000 * (0.2 + 0.7 * abs(base_phase))) + random.gauss(0, 15000) + (300000 if burst else 0))
+        )
+    else:  # mid tier company
+        interface_throughput = int(
+            max(0, (100000 * (0.2 + 0.7 * abs(base_phase))) + random.gauss(0, 15000) + (150000 if burst else 0))
+        )
     return {
         "timestamp": now_manila().isoformat(),
         "host_id": f"host_{random.randint(1, 10)}",
         "interface_throughput_bps": interface_throughput,
-        "network_rx_bytes": random.randint(0, 1024**3) + (interface_throughput * random.randint(0, 5)),
-        "network_tx_bytes": random.randint(0, 1024**3),
+        "network_rx_bytes": random.randint(0, 1024**4 if company_type == "Large-size Company" else 1024**3) + (interface_throughput * random.randint(0, 5)),
+        "network_tx_bytes": random.randint(0, 1024**4 if company_type == "Large-size Company" else 1024**3),
         "packet_loss_pct": round(random.uniform(0.0, 2.0 if not burst else 15.0), 2),
         "rtt_ms": round(random.uniform(0.0, 100.0 if not burst else 800.0), 2),
         "jitter_ms": round(random.uniform(0.0, 50.0 if not burst else 300.0), 2),
-        "active_flows": random.randint(0, 500 if burst else 120),
+        "active_flows": random.randint(0, 1000 if company_type == "Large-size Company" else (500 if burst else 120)),
         "bgp_changes": random.randint(0, 10),
         "psu_efficiency_pct": round(random.uniform(70.0, 98.0), 2),
         "sensor_temp_c": round(random.uniform(18.0, 85.0), 2),
@@ -834,6 +906,8 @@ def main():
     # Session state
     if "instance_id" not in st.session_state:
         st.session_state.instance_id = str(uuid.uuid4())[:8]
+    if "company_type" not in st.session_state:
+        st.session_state.company_type = "Mid-tier Company"
     if "agent_log" not in st.session_state:
         st.session_state.agent_log = []
     if "emit_seq" not in st.session_state:
@@ -842,11 +916,11 @@ def main():
         st.session_state.last_emit = time.monotonic()
     if "last_metrics" not in st.session_state:
         st.session_state.last_metrics = {
-            "container": generate_container_metrics(),
-            "vm": generate_vm_metrics(),
-            "app": generate_app_metrics(),
-            "orchestrator": generate_orchestrator_metrics(),
-            "network": generate_network_metrics(),
+            "container": generate_container_metrics(st.session_state.company_type),
+            "vm": generate_vm_metrics(st.session_state.company_type),
+            "app": generate_app_metrics(st.session_state.company_type),
+            "orchestrator": generate_orchestrator_metrics(st.session_state.company_type),
+            "network": generate_network_metrics(st.session_state.company_type),
         }
     # history of emitted snapshots for download (list of frozen dicts)
     if "metrics_history" not in st.session_state:
@@ -895,19 +969,27 @@ def main():
     """,
         unsafe_allow_html=True,
     )
-
+    if "company_type" not in st.session_state:
+        st.session_state.company_type = "Mid-tier Company"
     # Sidebar content: Instance ID, Location, and countdown placeholder (next update)
     with st.sidebar:
         st.markdown("# Argus Agent")
         st.markdown(f"**Instance ID:** {st.session_state.instance_id}")
         st.markdown("**Location:** Manila")
         st.markdown("---")
-        st.markdown("Indices are computed in Prometheus (paste PromQL to Grafana).")
-        # countdown placeholder in sidebar (updates every loop)
-        countdown_sidebar = st.empty()
+        st.markdown("### Select Company Size")
+        st.session_state.company_type = st.selectbox("Company Size:", ["Mid-tier Company", "Large-size Company"])
         st.markdown("---")
-        show_raw = st.checkbox("Show global raw JSON", value=False)
+        st.markdown("### Region Metadata")
+        st.markdown(f"**Region:** Manila")
+        st.markdown(f"**WUE (region_wue):** {REGION_META['Manila']['wue']}")
+        st.markdown(f"**Water availability (region_water_avail):** {REGION_META['Manila']['water_avail']}")
+        st.markdown(f"**NO2 factor (region_no2_emission_factor):** {REGION_META['Manila']['no2']}")
+        st.markdown("---")
+        st.markdown("Indices are computed in Prometheus (paste PromQL to Grafana).")
 
+        countdown_sidebar = st.empty()
+        
         # --- Download controls ---
         st.markdown("---")
         st.markdown("### Download generated telemetry")
@@ -933,6 +1015,7 @@ def main():
                     file_name=f"argus_metrics_{st.session_state.instance_id}.csv",
                     mime="text/csv",
                 )
+    
     main_area = st.container()
     # left column (main cards) + right column (feed)
     left, right = main_area.columns([1.4, 1])
@@ -966,11 +1049,11 @@ def main():
 
             if elapsed >= INTERVAL:
                 st.session_state.last_metrics = {
-                    "container": generate_container_metrics(),
-                    "vm": generate_vm_metrics(),
-                    "app": generate_app_metrics(),
-                    "orchestrator": generate_orchestrator_metrics(),
-                    "network": generate_network_metrics(),
+                    "container": generate_container_metrics(st.session_state.company_type),
+                    "vm": generate_vm_metrics(st.session_state.company_type),
+                    "app": generate_app_metrics(st.session_state.company_type),
+                    "orchestrator": generate_orchestrator_metrics(st.session_state.company_type),
+                    "network": generate_network_metrics(st.session_state.company_type),
                 }
                 st.session_state.last_emit = now_mon
                 st.session_state.emit_seq += 1
@@ -1156,7 +1239,7 @@ def main():
                 region_placeholder.markdown(f"<div style='margin-top:8px;color:#94a3b8;font-size:12px'>External data last updated: {ext_last}</div>", unsafe_allow_html=True)
             else:
                 region_placeholder.markdown(f"<div style='margin-top:8px;color:#94a3b8;font-size:12px'>External data not yet fetched</div>", unsafe_allow_html=True)
-
+  
             # Expanders with raw JSON so you can inspect the data
             with region_placeholder.container():
                 with st.expander("Show raw weather JSON", expanded=False):
@@ -1165,17 +1248,8 @@ def main():
                     st.json(ext_precip)
                 with st.expander("Show raw air quality JSON", expanded=False):
                     st.json(ext_aq)
-
-            # --- Region metadata card (kept below external data) ---
-            region_placeholder.markdown("<div style='margin-top:8px;padding:12px;border-radius:12px;background:linear-gradient(135deg,#07203a,#0a3850);color:#e2e8f0;'>", unsafe_allow_html=True)
-            region_placeholder.markdown("<h3 style='margin:0;'>Region metadata & Prometheus indices</h3>", unsafe_allow_html=True)
-            region_placeholder.markdown(f"**Region:** Manila")
-            region_placeholder.markdown(f"WUE (region_wue): {REGION_META['Manila']['wue']}")
-            region_placeholder.markdown(f"Water availability (region_water_avail): {REGION_META['Manila']['water_avail']}")
-            region_placeholder.markdown(f"NO2 factor (region_no2_emission_factor): {REGION_META['Manila']['no2']}")
-            region_placeholder.markdown("<div style='margin-top:6px;color:#94a3b8;'>Indices computed in Prometheus — paste PromQL into Grafana/Prometheus.</div>", unsafe_allow_html=True)
-            region_placeholder.markdown("</div>", unsafe_allow_html=True)
-
+           
+            
             # Right column: header + the feed (emit updates)
             # show a simple Live Feed header above the feed box
             feed_box.markdown("<div style='font-weight:800;margin-bottom:6px;'>Live Feed</div>", unsafe_allow_html=True)
@@ -1183,20 +1257,7 @@ def main():
                 f"<div style='padding:8px;'><div style='background:linear-gradient(135deg,#021026,#081520);padding:12px;border-radius:8px;color:#e2e8f0;min-height:200px;max-height:680px;overflow-y:auto;'><pre style='white-space:pre-wrap;margin:0;font-size:13px'>{'<br>'.join(st.session_state.agent_log)}</pre></div></div>",
                 unsafe_allow_html=True,
             )
-
-            # optionally show global raw JSON in sidebar
-            if show_raw:
-                st.sidebar.markdown("### Latest Raw Telemetry")
-                st.sidebar.json(
-                    {
-                        "container": container_metrics,
-                        "vm": vm_metrics,
-                        "app": app_metrics,
-                        "orchestrator": orchestrator_metrics,
-                        "network": network_metrics,
-                    }
-                )
-
+            
             time.sleep(SLEEP_STEP)
 
     except Exception as e:
